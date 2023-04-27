@@ -81,6 +81,8 @@ dice.east_demand_cube <- east_demand_cube[11:19, c('PJM', 'NYIS', 'ISNE', 'FPL',
 
 # create an empty plot
 plot(1, type="n", xlab="", ylab="", xlim = c(10,18), ylim=c(-1000, 120000))
+# below the x axis put the hour name with am or pm
+axis(1, at=10:18, labels=c("10am", "11am", "12pm", "1pm", "2pm", "3pm", "4pm", "5pm", "6pm"),pos=0)
 
 LM <- list()
 #for each row in east_demand plot a line

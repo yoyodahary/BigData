@@ -1,6 +1,7 @@
 library(lubridate)
 library(reshape2)
 library(plyr)
+
 A <- read.delim('Exc2/table.tsv')
 A$DateTime <- as.POSIXct( A$megawatthours, tz = "EST", "%H:%M EST %m/%d/%Y" )
 
@@ -57,51 +58,63 @@ colnames(United.States.Lower.48..region.) <- c('DateTime', 'Region', 'Demand', '
 # stack them one above the other
 electricity_fact_table <- rbind(BPAT, CISO, CPLE, ERCO, FPL, ISNE, MISO, NYIS, PACW, PJM, United.States.Lower.48..region.)
 
-# get the range of dates we want to analyze (Feb 1 to Feb 7) in an arrays by days
-startDate <- as.POSIXct("2021-02-07 00:00:01 IST")
-endDate <- as.POSIXct("2021-02-14 23:59:59 IST")
+# drop Net.generation column
+electricity_fact_table <- electricity_fact_table[, c('DateTime', 'Region', 'Demand')]
+#add hour column
+electricity_fact_table$Hour <- hour(electricity_fact_table$DateTime)
 
-week_of_february <- electricity_fact_table[electricity_fact_table$DateTime >= startDate & electricity_fact_table$DateTime <= endDate, ]
 
-# separate the date and time in two columns
-week_of_february$Date <- as.Date(week_of_february$DateTime)
-week_of_february$hour <- format(week_of_february$DateTime, "%H")
-
-# fill NA with 0
-week_of_february$Net.generation[is.na(week_of_february$Net.generation)] <- 0
+#add hour column
+tmp <- electricity_fact_table
+tmp$Hour <- hour(tmp$DateTime)
 #drop duplicates
-week_of_february <- week_of_february[!duplicated(week_of_february), ]
-# Create a 3d cube with the dimensions: Date, hour, region for the net generation
-Net_generation_cube <- acast(week_of_february, Date ~ hour ~ Region, value.var = "Net.generation")
-# slice the demand across the us
-slice.Net_generation_cube <- Net_generation_cube[, , 'United.States.Lower.48..region.']
+tmp <- tmp[!duplicated(tmp), ]
+#drop DateTime column
+tmp <- tmp[, c('Hour', 'Region', 'Demand')]
+# fill NA with 0
+tmp[is.na(tmp)] <- 0
+# make E 2d cube with hour and region, use tapply to take mean of demand for each hour and region
+east_demand_cube <- tapply(tmp$Demand, list(tmp$Hour, tmp$Region), mean)
 
-# convert to dataframe
-slice.Net_generation_cube <- as.data.frame(slice.Net_generation_cube)
+# dice the cube to hours 20 to 3 and the regions PJM, NYIS, ISNE, FPL, CPLE
+dice.east_demand_cube <- east_demand_cube[c(21,22,23,24,1,2,3), c('PJM', 'NYIS', 'ISNE', 'FPL', 'CPLE')]
 
-#drop the first row
-slice.Net_generation_cube <- slice.Net_generation_cube[-1, ]
+# create an empty plot without lables at the x axis
+plot(0,0, xlim = c(1,7), ylim = c(0, 110000), xlab = 'Hour', ylab = 'Demand', type = 'n')
 
-# fill na with 0
-slice.Net_generation_cube[is.na(slice.Net_generation_cube)] <- 0
+# rename the x axis ticks to be the hours 20pm - 3am and put it under the x axis
+axis(1, at = 1:7, labels = c('20pm', '21pm', '22pm', '23pm', '0am', '1am', '2am'), pos = 0)
+colors <- c('red', 'blue', 'green', 'yellow', 'black')
+LM <- list()
+#for each row in east_demand plot a line
+for (i in 1:ncol(dice.east_demand_cube)) {
+  # create a data frame for each region, Time will be the rows umbers of the cube, Demand will be the values of the cube
+  DF <- data.frame (  Time = 1:7,Demand = dice.east_demand_cube[ , i] )
+  # fill NA with 0
+  DF[ is.na(DF) ] <- 0
+  # plot
+  lines( DF, col = i+1, type = 'b' )
+  # linear fit
+  LM[[ i ]] <- lm( Demand ~ Time, data = DF)
+  a <- coef(LM[[ i ]])[1]
+  b <- coef(LM[[ i ]])[2]
+  abline(a, b, col = i+1, lw =2)
+}
 
-# sum over the rows (i.e sum the hours)
-rollup.slice.Net_generation_cube <- rowSums(slice.Net_generation_cube)
-#drop the NA
-rollup.slice.Net_generation_cube <- na.omit(rollup.slice.Net_generation_cube)
-#get the mean
-mean <- mean(rollup.slice.Net_generation_cube)
 
-#plot Net generation across the us
-plot(rollup.slice.Net_generation_cube, type = "l", col = "blue", xlab = "Date", ylab = "Net generation across the US")
+# calculate the overall mean and its regression
+DF <- data.frame (  Time = 1:7,Demand = rowMeans(dice.east_demand_cube[ , 1:ncol(dice.east_demand_cube)] ) )
+# fill NA with 0
+DF[ is.na(DF) ] <- 0
+# plot
+lines( DF, col = 7, type = 'b' )
+# linear fit
+LM[[ 1 ]] <- lm( Demand ~ Time, data = DF)
+a <- coef(LM[[ 1 ]])[1]
+b <- coef(LM[[ 1 ]])[2]
+abline(a, b, col = 7, lw =2)
 
-# rename the x axis to be dates
-axis(1, at = 1:8, labels =c("7 feb","8 feb","9 feb","10 feb","11 feb","12 feb","13 feb","14 feb"))
 
-# plot the mean line
-abline(h = mean, col = "red")
-
-# plot linear regression
-DF <- data.frame(Time = 1:8, Net_generation =rollup.slice.Net_generation_cube)
-fit <- lm(Net_generation ~ Time, data = DF)
-abline(fit, col = "green")
+regions <- c('PJM', 'NYIS', 'ISNE', 'FPL', 'CPLE' , 'East coast')
+legend( 'bottomleft', col = 2:7, pch = 19,
+        legend = sapply(regions, function(x) paste0('Demand -',x) ))
