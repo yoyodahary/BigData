@@ -116,5 +116,5 @@ abline(a, b, col = 7, lw =2)
 
 
 regions <- c('PJM', 'NYIS', 'ISNE', 'FPL', 'CPLE' , 'East coast')
-legend( 'bottomleft', col = 2:7, pch = 19,
-        legend = sapply(regions, function(x) paste0('Demand -',x) ))
+legend( 'topleft', col = 2:7, pch = 19,
+        legend = sapply(regions, function(x) paste0('Demand -',x) ),cex = 0.75)
